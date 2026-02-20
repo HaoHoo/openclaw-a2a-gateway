@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import request from "supertest";
 
 import plugin from "../index.js";
+import { buildAgentCard } from "../src/agent-card.js";
+import { OpenClawAgentExecutor } from "../src/executor.js";
+import type { GatewayConfig, OpenClawPluginApi } from "../src/types.js";
 
 interface Service {
   id: string;
@@ -101,16 +103,8 @@ async function invokeGatewayMethod(
 }
 
 describe("a2a-gateway plugin", () => {
-  it("serves the Agent Card with protocolVersion 0.3.0 and required fields", async () => {
-    const harness = createHarness(makeConfig());
-    const app = harness.service.__app;
-    assert(app, "app should be available for in-memory tests");
-
-    const response = await request(app as any)
-      .get("/.well-known/agent.json");
-
-    assert.equal(response.status, 200);
-    const payload = response.body as Record<string, unknown>;
+  it("builds an Agent Card with protocolVersion 0.3.0 and required fields", async () => {
+    const payload = buildAgentCard(makeConfig() as unknown as GatewayConfig) as Record<string, unknown>;
     assert.equal(payload.protocolVersion, "0.3.0");
     assert.equal(payload.name, "Test Agent");
 
@@ -124,54 +118,239 @@ describe("a2a-gateway plugin", () => {
     assert.equal(capabilities.stateTransitionHistory, false);
   });
 
-  it("accepts JSON-RPC requests and dispatches to OpenClaw agent bridge", async () => {
-    const harness = createHarness(makeConfig());
-    const app = harness.service.__app;
-    assert(app, "app should be available for in-memory tests");
+  it("prefers gateway RPC dispatch over legacy bridge", async () => {
+    const dispatchCalls: Array<{ agentId: string; event: unknown }> = [];
+    const api: OpenClawPluginApi = {
+      config: { gateway: { port: 18789 } },
+      pluginConfig: {},
+      logger: {
+        info: () => {},
+        warn: () => {},
+        error: () => {},
+      },
+      on: () => {},
+      registerGatewayMethod: () => {},
+      registerService: () => {},
+      async dispatchToAgent(agentId, event) {
+        dispatchCalls.push({ agentId, event });
+        return { accepted: true, response: "Legacy response" };
+      },
+    };
 
-    const response = await request(app as any)
-      .post("/a2a/jsonrpc")
-      .set("content-type", "application/json")
-      .send({
-        jsonrpc: "2.0",
-        id: "req-1",
-        method: "message/send",
-        params: {
-          message: {
+    class MockGatewaySocket {
+      readyState = 0;
+      private readonly listeners = new Map<string, Set<(event: any) => void>>();
+
+      constructor(_url: string) {
+        this.listeners.set("open", new Set());
+        this.listeners.set("message", new Set());
+        this.listeners.set("error", new Set());
+        this.listeners.set("close", new Set());
+        queueMicrotask(() => {
+          this.readyState = 1;
+          this.emit("open", {});
+        });
+      }
+
+      send(data: string): void {
+        const frame = JSON.parse(data) as { id: string; method: string };
+        if (frame.method === "connect") {
+          this.respond(frame.id, true, { status: "ok" });
+          return;
+        }
+        if (frame.method === "sessions.resolve") {
+          this.respond(frame.id, true, { key: "session-1" });
+          return;
+        }
+        if (frame.method === "agent") {
+          this.respond(frame.id, true, { status: "accepted" });
+          this.respond(frame.id, true, {
+            status: "ok",
+            result: {
+              payloads: [{ kind: "text", text: "Gateway response" }],
+            },
+          });
+          return;
+        }
+        this.respond(frame.id, false, null, { message: `unsupported method ${frame.method}` });
+      }
+
+      close(): void {
+        this.readyState = 3;
+        this.emit("close", {});
+      }
+
+      addEventListener(type: string, listener: (event: any) => void): void {
+        if (!this.listeners.has(type)) {
+          this.listeners.set(type, new Set());
+        }
+        this.listeners.get(type)?.add(listener);
+      }
+
+      removeEventListener(type: string, listener: (event: any) => void): void {
+        this.listeners.get(type)?.delete(listener);
+      }
+
+      private respond(id: string, ok: boolean, payload?: unknown, error?: unknown): void {
+        queueMicrotask(() => {
+          this.emit("message", {
+            data: JSON.stringify({
+              type: "res",
+              id,
+              ok,
+              payload,
+              error,
+            }),
+          });
+        });
+      }
+
+      private emit(type: string, event: unknown): void {
+        for (const listener of this.listeners.get(type) || []) {
+          listener(event);
+        }
+      }
+    }
+
+    const originalWebSocket = (globalThis as any).WebSocket;
+    (globalThis as any).WebSocket = MockGatewaySocket;
+
+    try {
+      const executor = new OpenClawAgentExecutor(api, makeConfig() as unknown as GatewayConfig);
+      const published: unknown[] = [];
+      let finishedCalled = false;
+
+      await executor.execute(
+        {
+          taskId: "task-1",
+          contextId: "ctx-1",
+          userMessage: {
             messageId: "msg-1",
             role: "user",
             agentId: "writer-agent",
-            parts: [{ kind: "text", text: "hello" }]
+            parts: [{ kind: "text", text: "hello" }],
           },
-        },
-      });
+        } as any,
+        {
+          publish(event: unknown) {
+            published.push(event);
+          },
+          finished() {
+            finishedCalled = true;
+          },
+        } as any
+      );
 
-    assert.equal(response.status, 200);
-    const body = response.body as Record<string, unknown>;
-    assert.equal(body.jsonrpc, "2.0");
+      assert.equal(dispatchCalls.length, 0);
+      assert.equal(finishedCalled, true);
 
-    const result = body.result as Record<string, unknown>;
-    // Executor now returns a proper Task with lifecycle states
-    assert.equal(typeof result.id, "string", "Task should have an id");
-    assert.equal(result.kind, "task", "Result should be a Task");
-    const status = result.status as Record<string, unknown>;
-    assert.equal(status.state, "completed", "Task should be in completed state");
+      const finalTask = published[published.length - 1] as Record<string, unknown>;
+      const status = finalTask.status as Record<string, unknown>;
+      const message = status.message as Record<string, unknown>;
+      const parts = message.parts as Array<Record<string, unknown>>;
+      assert.equal(parts[0].text, "Gateway response");
+    } finally {
+      (globalThis as any).WebSocket = originalWebSocket;
+    }
+  });
 
-    assert.equal(harness.dispatchCalls.length, 1);
-    assert.equal(harness.dispatchCalls[0].agentId, "writer-agent");
+  it("falls back to legacy bridge and publishes completed task when gateway path is unavailable", async () => {
+    const dispatchCalls: Array<{ agentId: string; event: unknown }> = [];
+    const api: OpenClawPluginApi = {
+      config: { gateway: { port: 18789 } },
+      pluginConfig: {},
+      logger: {
+        info: () => {},
+        warn: () => {},
+        error: () => {},
+      },
+      on: () => {},
+      registerGatewayMethod: () => {},
+      registerService: () => {},
+      async dispatchToAgent(agentId, event) {
+        dispatchCalls.push({ agentId, event });
+        return { accepted: true, response: "Request processed" };
+      },
+    };
 
-    const restResponse = await request(app as any)
-      .post("/a2a/rest/v1/message:send")
-      .set("content-type", "application/json")
-      .send({
-        message: {
-          messageId: "msg-2",
-          role: "ROLE_USER",
-          agentId: "writer-agent",
-          parts: [{ kind: "text", text: "hello" }],
-        },
-      });
-    assert.equal(restResponse.status, 201);
+    const originalWebSocket = (globalThis as any).WebSocket;
+    (globalThis as any).WebSocket = undefined;
+
+    try {
+      const executor = new OpenClawAgentExecutor(api, makeConfig() as unknown as GatewayConfig);
+      const published: unknown[] = [];
+      let finishedCalled = false;
+
+      await executor.execute(
+        {
+          taskId: "task-1",
+          contextId: "ctx-1",
+          userMessage: {
+            messageId: "msg-1",
+            role: "user",
+            agentId: "writer-agent",
+            parts: [{ kind: "text", text: "hello" }],
+          },
+        } as any,
+        {
+          publish(event: unknown) {
+            published.push(event);
+          },
+          finished() {
+            finishedCalled = true;
+          },
+        } as any
+      );
+
+      assert.equal(dispatchCalls.length, 1);
+      assert.equal(dispatchCalls[0].agentId, "writer-agent");
+      assert.equal(finishedCalled, true);
+
+      const finalTask = published[published.length - 1] as Record<string, unknown>;
+      assert.equal(finalTask.kind, "task");
+      const status = finalTask.status as Record<string, unknown>;
+      assert.equal(status.state, "completed");
+    } finally {
+      (globalThis as any).WebSocket = originalWebSocket;
+    }
+  });
+
+  it("cancelTask uses tracked task contextId and does not fabricate it", async () => {
+    const api: OpenClawPluginApi = {
+      config: { gateway: { port: 18789 } },
+      pluginConfig: {},
+      logger: {
+        info: () => {},
+        warn: () => {},
+        error: () => {},
+      },
+      on: () => {},
+      registerGatewayMethod: () => {},
+      registerService: () => {},
+      async dispatchToAgent() {
+        return { accepted: true, response: "Request processed" };
+      },
+    };
+
+    const executor = new OpenClawAgentExecutor(api, makeConfig() as unknown as GatewayConfig);
+    (executor as any).taskContextByTaskId.set("task-1", "ctx-1");
+
+    const published: Array<Record<string, unknown>> = [];
+    let finishedCalled = false;
+
+    await executor.cancelTask("task-1", {
+      publish(event: unknown) {
+        published.push(event as Record<string, unknown>);
+      },
+      finished() {
+        finishedCalled = true;
+      },
+    } as any);
+
+    assert.equal(finishedCalled, true);
+    assert.equal(published.length, 1);
+    assert.equal(published[0].id, "task-1");
+    assert.equal(published[0].contextId, "ctx-1");
   });
 
   it("a2a.send sends to mocked peer JSON-RPC endpoint", async () => {

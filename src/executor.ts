@@ -441,16 +441,19 @@ class GatewayRpcConnection {
 export class OpenClawAgentExecutor implements AgentExecutor {
   private readonly api: OpenClawPluginApi;
   private readonly defaultAgentId: string;
+  private readonly taskContextByTaskId: Map<string, string>;
 
   constructor(api: OpenClawPluginApi, config: GatewayConfig) {
     this.api = api;
     this.defaultAgentId = config.routing.defaultAgentId;
+    this.taskContextByTaskId = new Map();
   }
 
   async execute(requestContext: RequestContext, eventBus: ExecutionEventBus): Promise<void> {
     const agentId = pickAgentId(requestContext, this.defaultAgentId);
     const taskId = requestContext.taskId;
     const contextId = requestContext.contextId;
+    this.taskContextByTaskId.set(taskId, contextId);
 
     // Publish initial "working" state so the task is trackable during async dispatch
     const workingTask: Task = {
@@ -467,11 +470,12 @@ export class OpenClawAgentExecutor implements AgentExecutor {
     let responseText = FALLBACK_RESPONSE_TEXT;
 
     try {
-      if (this.api.dispatchToAgent) {
-        responseText = await this.dispatchViaLegacyApi(agentId, taskId, contextId, requestContext.userMessage);
-      } else {
-        responseText = await this.dispatchViaGatewayRpc(agentId, requestContext.userMessage);
-      }
+      responseText = await this.dispatchPreferredThenLegacy(
+        agentId,
+        taskId,
+        contextId,
+        requestContext.userMessage,
+      );
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       this.api.logger.warn(`a2a-gateway: agent dispatch failed (${errorMessage}); using fallback`);
@@ -506,21 +510,53 @@ export class OpenClawAgentExecutor implements AgentExecutor {
     };
 
     eventBus.publish(completedTask);
+    this.taskContextByTaskId.delete(taskId);
     eventBus.finished();
   }
 
   async cancelTask(taskId: string, eventBus: ExecutionEventBus): Promise<void> {
+    const contextId = this.taskContextByTaskId.get(taskId);
+    if (!contextId) {
+      this.api.logger.warn(
+        `a2a-gateway: cancelTask missing contextId for task ${taskId}; skipping cancel publish`,
+      );
+      eventBus.finished();
+      return;
+    }
+
     const canceledTask: Task = {
       kind: "task",
       id: taskId,
-      contextId: taskId,
+      contextId,
       status: {
         state: "canceled",
         timestamp: new Date().toISOString(),
       },
     };
     eventBus.publish(canceledTask);
+    this.taskContextByTaskId.delete(taskId);
     eventBus.finished();
+  }
+
+  private async dispatchPreferredThenLegacy(
+    agentId: string,
+    taskId: string,
+    contextId: string,
+    userMessage: unknown,
+  ): Promise<string> {
+    try {
+      return await this.dispatchViaGatewayRpc(agentId, userMessage);
+    } catch (preferredError: unknown) {
+      const preferredMessage = preferredError instanceof Error ? preferredError.message : String(preferredError);
+      if (!this.api.dispatchToAgent) {
+        throw preferredError;
+      }
+
+      this.api.logger.warn(
+        `a2a-gateway: preferred gateway dispatch failed (${preferredMessage}); falling back to dispatchToAgent`,
+      );
+      return await this.dispatchViaLegacyApi(agentId, taskId, contextId, userMessage);
+    }
   }
 
   private async dispatchViaLegacyApi(
