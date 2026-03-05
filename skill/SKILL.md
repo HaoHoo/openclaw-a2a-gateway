@@ -37,10 +37,11 @@ Get current allowed plugins first to avoid overwriting:
 openclaw config get plugins.allow
 ```
 
-Then add `a2a-gateway` to the existing array:
+Then add `a2a-gateway` to the existing array (do NOT drop existing plugin ids):
 
 ```bash
-openclaw config set plugins.allow '["telegram", "a2a-gateway"]'
+# Example only — include your existing plugins too
+openclaw config set plugins.allow '["<existing...>", "a2a-gateway"]'
 openclaw config set plugins.load.paths '["<ABSOLUTE_PATH>/plugins/a2a-gateway"]'
 openclaw config set plugins.entries.a2a-gateway.enabled true
 ```
@@ -60,10 +61,12 @@ openclaw config set plugins.entries.a2a-gateway.config.agentCard.skills '[{"id":
 
 | Field | Points to | Example |
 |-------|-----------|---------|
-| `agentCard.url` | JSON-RPC endpoint | `http://100.x.x.x:18800/a2a/jsonrpc` |
-| `peers[].agentCardUrl` | Agent Card discovery | `http://100.x.x.x:18800/.well-known/agent.json` |
+| `agentCard.url` | JSON-RPC endpoint (default) | `http://100.x.x.x:18800/a2a/jsonrpc` |
+| `peers[].agentCardUrl` | Agent Card discovery (preferred) | `http://100.x.x.x:18800/.well-known/agent-card.json` |
 
 **Do NOT confuse these two.** `agentCard.url` tells peers where to send messages. `agentCardUrl` tells you where to discover the peer.
+
+Note: this plugin also serves the legacy alias `/.well-known/agent.json`, but the official SDK default is `/.well-known/agent-card.json`.
 
 ## Step 4: Configure Server
 
@@ -96,7 +99,7 @@ openclaw config set plugins.entries.a2a-gateway.config.routing.defaultAgentId 'm
 openclaw config set plugins.entries.a2a-gateway.config.peers '[
   {
     "name": "<PEER_NAME>",
-    "agentCardUrl": "http://<PEER_IP>:18800/.well-known/agent.json",
+    "agentCardUrl": "http://<PEER_IP>:18800/.well-known/agent-card.json",
     "auth": {
       "type": "bearer",
       "token": "<PEER_INBOUND_TOKEN>"
@@ -113,10 +116,10 @@ For multiple peers, include all in one JSON array.
 openclaw gateway restart
 
 # Verify Agent Card
-curl -s http://localhost:18800/.well-known/agent.json | python3 -m json.tool
+curl -s http://localhost:18800/.well-known/agent-card.json | python3 -m json.tool
 
 # Verify peer connectivity
-curl -s http://<PEER_IP>:18800/.well-known/agent.json | python3 -m json.tool
+curl -s http://<PEER_IP>:18800/.well-known/agent-card.json | python3 -m json.tool
 ```
 
 ## Step 9: Configure TOOLS.md
@@ -125,10 +128,7 @@ curl -s http://<PEER_IP>:18800/.well-known/agent.json | python3 -m json.tool
 
 Read `references/tools-md-template.md` and append the A2A section to the agent's `TOOLS.md`, replacing placeholders with actual peer info.
 
-Two calling methods are available (include both in TOOLS.md):
-
-- **curl** — universal, works in any environment with shell access
-- **SDK script** (`scripts/a2a-send.mjs`) — uses official `@a2a-js/sdk` ClientFactory, type-safe, auto-discovers transport
+For outbound messaging, use the SDK script (`scripts/a2a-send.mjs`).
 
 To use the SDK script, ensure `@a2a-js/sdk` is installed in the plugin directory:
 
@@ -175,7 +175,7 @@ For two-way communication, repeat Steps 1-9 on BOTH servers:
 - [ ] Server A: TOOLS.md updated with Server B peer info
 - [ ] Server B: TOOLS.md updated with Server A peer info
 - [ ] Both: `openclaw gateway restart` done
-- [ ] Both: Agent Cards accessible (`curl /.well-known/agent.json`)
+- [ ] Both: Agent Cards accessible (`curl /.well-known/agent-card.json`)
 - [ ] Test: A → B message/send works
 - [ ] Test: B → A message/send works
 

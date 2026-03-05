@@ -9,7 +9,15 @@
  * Requires: npm install @a2a-js/sdk
  */
 
-import { ClientFactory, ClientFactoryOptions, DefaultAgentCardResolver, JsonRpcTransportFactory, RestTransportFactory, createAuthenticatingFetchWithRetry } from "@a2a-js/sdk/client";
+import {
+  ClientFactory,
+  ClientFactoryOptions,
+  DefaultAgentCardResolver,
+  JsonRpcTransportFactory,
+  RestTransportFactory,
+  createAuthenticatingFetchWithRetry,
+} from "@a2a-js/sdk/client";
+import { GrpcTransportFactory } from "@a2a-js/sdk/client/grpc";
 import { randomUUID } from "node:crypto";
 
 function parseArgs() {
@@ -48,8 +56,11 @@ async function main() {
     ClientFactoryOptions.createFrom(ClientFactoryOptions.default, {
       cardResolver: new DefaultAgentCardResolver({ fetchImpl: authFetch }),
       transports: [
+        // Keep JSON-RPC first as the default (most compatible)
         new JsonRpcTransportFactory({ fetchImpl: authFetch }),
         new RestTransportFactory({ fetchImpl: authFetch }),
+        // GRPC is optional; requires server gRPC to be reachable (typically port+1)
+        new GrpcTransportFactory(),
       ],
     })
   );
@@ -58,14 +69,17 @@ async function main() {
   const client = await factory.createFromUrl(peerUrl);
 
   // Send message
-  const result = await client.sendMessage({
-    message: {
-      kind: "message",
-      messageId: randomUUID(),
-      role: "user",
-      parts: [{ kind: "text", text: message }],
+  const result = await client.sendMessage(
+    {
+      message: {
+        kind: "message",
+        messageId: randomUUID(),
+        role: "user",
+        parts: [{ kind: "text", text: message }],
+      },
     },
-  });
+    token ? { serviceParameters: { authorization: `Bearer ${token}` } } : undefined,
+  );
 
   // Extract response text
   const response = result;

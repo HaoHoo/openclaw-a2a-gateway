@@ -29,7 +29,7 @@ node <WORKSPACE>/plugins/a2a-gateway/skill/scripts/a2a-send.mjs \
 The script uses `@a2a-js/sdk` ClientFactory to:
 - Auto-discover the peer's Agent Card
 - Handle bearer token authentication
-- Select the best transport (JSON-RPC or REST)
+- Select the best transport (JSON-RPC by default; REST or GRPC if preferred/available)
 - Print the peer agent's response text directly
 
 ### Notes
