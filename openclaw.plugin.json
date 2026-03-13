@@ -91,6 +91,11 @@
             "default": "none"
           },
           "token": { "type": "string" },
+          "tokens": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Multiple tokens for zero-downtime rotation. Used alongside or instead of 'token'."
+          },
           "allowedMimeTypes": {
             "type": "array",
             "items": { "type": "string" },
@@ -213,7 +218,8 @@
       }
     },
     "security": {
-      "token": { "sensitive": true }
+      "token": { "sensitive": true },
+      "tokens": { "items": { "sensitive": true } }
     }
   }
 }
