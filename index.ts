@@ -23,6 +23,7 @@ import { QueueingAgentExecutor } from "./src/queueing-executor.js";
 import { runTaskCleanup } from "./src/task-cleanup.js";
 import { FileTaskStore } from "./src/task-store.js";
 import { GatewayTelemetry } from "./src/telemetry.js";
+import { PeerHealthManager } from "./src/peer-health.js";
 import type {
   AgentCardConfig,
   GatewayConfig,
@@ -146,6 +147,10 @@ function parseConfig(raw: unknown, resolvePath?: (nextPath: string) => string): 
   const limits = asObject(config.limits);
   const observability = asObject(config.observability);
   const timeouts = asObject(config.timeouts);
+  const resilience = asObject(config.resilience);
+  const healthCheck = asObject(resilience.healthCheck);
+  const retry = asObject(resilience.retry);
+  const circuitBreaker = asObject(resilience.circuitBreaker);
 
   const inboundAuth = asString(security.inboundAuth, "none") as InboundAuth;
 
@@ -195,6 +200,22 @@ function parseConfig(raw: unknown, resolvePath?: (nextPath: string) => string): 
     timeouts: {
       agentResponseTimeoutMs: asNumber(timeouts.agentResponseTimeoutMs, 300_000),
     },
+    resilience: {
+      healthCheck: {
+        enabled: asBoolean(healthCheck.enabled, true),
+        intervalMs: asNumber(healthCheck.intervalMs, 30_000),
+        timeoutMs: asNumber(healthCheck.timeoutMs, 5_000),
+      },
+      retry: {
+        maxRetries: Math.max(0, Math.floor(asNumber(retry.maxRetries, 3))),
+        baseDelayMs: asNumber(retry.baseDelayMs, 1_000),
+        maxDelayMs: asNumber(retry.maxDelayMs, 10_000),
+      },
+      circuitBreaker: {
+        failureThreshold: Math.max(1, Math.floor(asNumber(circuitBreaker.failureThreshold, 5))),
+        resetTimeoutMs: asNumber(circuitBreaker.resetTimeoutMs, 30_000),
+      },
+    },
   };
 }
 
@@ -224,6 +245,37 @@ const plugin = {
       config.limits,
     );
     const agentCard = buildAgentCard(config);
+
+    // Peer resilience: health check + circuit breaker
+    const healthManager = config.peers.length > 0
+      ? new PeerHealthManager(
+          config.peers,
+          config.resilience.healthCheck,
+          config.resilience.circuitBreaker,
+          async (peer) => {
+            try {
+              await client.discoverAgentCard(peer, config.resilience.healthCheck.timeoutMs);
+              return true;
+            } catch {
+              return false;
+            }
+          },
+          (level, msg, details) => {
+            if (level === "error") {
+              api.logger.error(details ? `${msg}: ${JSON.stringify(details)}` : msg);
+            } else if (level === "warn") {
+              api.logger.warn(details ? `${msg}: ${JSON.stringify(details)}` : msg);
+            } else {
+              api.logger.info(details ? `${msg}: ${JSON.stringify(details)}` : msg);
+            }
+          },
+        )
+      : null;
+
+    // Wire peer state into telemetry snapshot
+    if (healthManager) {
+      telemetry.setPeerStateProvider(() => healthManager.getAllStates());
+    }
 
     // SDK expects userBuilder(req) -> Promise<User>
     // When bearer auth is configured, validate the Authorization header.
@@ -331,8 +383,18 @@ const plugin = {
       }
 
       const startedAt = Date.now();
+      const sendOptions = {
+        healthManager: healthManager ?? undefined,
+        retryConfig: config.resilience.retry,
+        log: (level: "info" | "warn", msg: string, details?: Record<string, unknown>) => {
+          if (details?.attempt) {
+            telemetry.recordPeerRetry(peer.name, details.attempt as number);
+          }
+          api.logger[level](details ? `${msg}: ${JSON.stringify(details)}` : msg);
+        },
+      };
       client
-        .sendMessage(peer, message)
+        .sendMessage(peer, message, sendOptions)
         .then((result) => {
           telemetry.recordOutboundRequest(
             peer.name,
@@ -427,7 +489,10 @@ const plugin = {
             if (params.agentId) {
               message.agentId = params.agentId;
             }
-            const result = await client.sendMessage(peer, message);
+            const result = await client.sendMessage(peer, message, {
+              healthManager: healthManager ?? undefined,
+              retryConfig: config.resilience.retry,
+            });
             if (result.ok) {
               return {
                 content: [{ type: "text" as const, text: `File sent to ${params.peer} via A2A.\nURI: ${params.uri}\nResponse: ${JSON.stringify(result.response)}` }],
@@ -460,6 +525,9 @@ const plugin = {
         if (server) {
           return;
         }
+
+        // Start peer health checks
+        healthManager?.start();
 
         // Start HTTP server (JSON-RPC + REST)
         await new Promise<void>((resolve, reject) => {
@@ -548,6 +616,9 @@ const plugin = {
         );
       },
       async stop(_ctx) {
+        // Stop peer health checks
+        healthManager?.stop();
+
         // Stop task cleanup timer
         if (cleanupTimer) {
           clearInterval(cleanupTimer);
