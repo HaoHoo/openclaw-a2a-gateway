@@ -408,7 +408,7 @@ node <PLUGIN_PATH>/skill/scripts/a2a-send.mjs \
 | `agentCard.skills` | array | `[{chat}]` | List of skills this agent offers |
 | `server.host` | string | `0.0.0.0` | Bind address |
 | `server.port` | number | `18800` | A2A server port |
-| `storage.tasksDir` | string | `data/tasks` | Durable on-disk task store path |
+| `storage.tasksDir` | string | `~/.openclaw/a2a-tasks` | Durable on-disk task store path |
 | `peers` | array | `[]` | List of peer agents |
 | `peers[].name` | string | *required* | Peer display name |
 | `peers[].agentCardUrl` | string | *required* | URL to peer's Agent Card |
@@ -567,7 +567,6 @@ The agent will follow the skill's procedure automatically.
 ### Next
 
 - Rule-based routing: choose peer + target agentId based on message type/tags/skills
-- Cross-platform default tasksDir (`~/.openclaw/a2a-tasks`) for Mac compatibility
 - DNS-based dynamic agent discovery (mDNS/DNS-SD) instead of hardcoded peer URLs
 - Push notifications support (store + sender) for long-running tasks
 - Metrics endpoint authentication (bearer auth or IP allowlist)

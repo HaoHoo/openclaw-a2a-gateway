@@ -404,7 +404,7 @@ node <插件路径>/skill/scripts/a2a-send.mjs \
 | `agentCard.skills` | array | `[{chat}]` | Agent 提供的技能列表 |
 | `server.host` | string | `0.0.0.0` | 绑定地址 |
 | `server.port` | number | `18800` | A2A 服务端口 |
-| `storage.tasksDir` | string | `data/tasks` | 磁盘持久化任务目录 |
+| `storage.tasksDir` | string | `~/.openclaw/a2a-tasks` | 磁盘持久化任务目录 |
 | `peers` | array | `[]` | 对等 Agent 列表 |
 | `peers[].name` | string | *必填* | 对等方显示名称 |
 | `peers[].agentCardUrl` | string | *必填* | 对等方 Agent Card URL |
@@ -555,7 +555,6 @@ Agent 会自动按照 skill 的流程执行。
 ### 待做（欢迎 PR）
 
 - 规则路由：按消息类型/标签/skill 自动选择 peer + 目标 agentId
-- 跨平台默认 tasksDir（`~/.openclaw/a2a-tasks`），兼容 Mac
 - DNS-based 动态 Agent 发现（mDNS/DNS-SD），替代硬编码 peer URL
 - Push notifications 支持（store + sender），超长任务异步回调
 - Metrics 端点鉴权（bearer auth 或 IP 白名单）

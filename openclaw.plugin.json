@@ -52,7 +52,7 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "tasksDir": { "type": "string", "default": "data/tasks" },
+          "tasksDir": { "type": "string", "default": "~/.openclaw/a2a-tasks" },
           "taskTtlHours": {
             "type": "number",
             "default": 72,

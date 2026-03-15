@@ -7,6 +7,7 @@
  */
 
 import type { Server } from "node:http";
+import os from "node:os";
 import path from "node:path";
 
 import { AGENT_CARD_PATH } from "@a2a-js/sdk";
@@ -139,7 +140,7 @@ function parsePeers(raw: unknown): PeerConfig[] {
   return peers;
 }
 
-function parseConfig(raw: unknown, resolvePath?: (nextPath: string) => string): GatewayConfig {
+export function parseConfig(raw: unknown, resolvePath?: (nextPath: string) => string): GatewayConfig {
   const config = asObject(raw);
   const server = asObject(config.server);
   const storage = asObject(config.storage);
@@ -173,7 +174,11 @@ function parseConfig(raw: unknown, resolvePath?: (nextPath: string) => string): 
       port: asNumber(server.port, 18800),
     },
     storage: {
-      tasksDir: resolveConfiguredPath(storage.tasksDir, "data/tasks", resolvePath),
+      tasksDir: resolveConfiguredPath(
+        storage.tasksDir,
+        path.join(os.homedir(), ".openclaw", "a2a-tasks"),
+        resolvePath,
+      ),
       taskTtlHours: Math.max(1, asNumber(storage.taskTtlHours, 72)),
       cleanupIntervalMinutes: Math.max(1, asNumber(storage.cleanupIntervalMinutes, 60)),
     },
