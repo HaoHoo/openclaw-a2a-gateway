@@ -29,10 +29,18 @@ import { register as registerHealth } from "../src/commands/health.js";
 import { register as registerCard } from "../src/commands/card.js";
 import { register as registerSend } from "../src/commands/send.js";
 import { register as registerStatus } from "../src/commands/status.js";
+import { register as registerDiscover } from "../src/commands/discover.js";
+import { register as registerStream } from "../src/commands/stream.js";
+import { register as registerBench } from "../src/commands/bench.js";
+import { register as registerTrace } from "../src/commands/trace.js";
 
 registerHealth(program);
 registerCard(program);
 registerSend(program);
 registerStatus(program);
+registerDiscover(program);
+registerStream(program);
+registerBench(program);
+registerTrace(program);
 
 program.parse();
