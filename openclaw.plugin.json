@@ -21,6 +21,10 @@
           "name": { "type": "string" },
           "description": { "type": "string" },
           "url": { "type": "string" },
+          "grpcUrl": {
+            "type": "string",
+            "description": "Override the gRPC interface URL published in the Agent Card (for example: domain.com/grpc). Does not change the local gRPC listener port."
+          },
           "skills": {
             "type": "array",
             "items": {

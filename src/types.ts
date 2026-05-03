@@ -45,6 +45,7 @@ export interface AgentCardConfig {
   name: string;
   description?: string;
   url?: string;
+  grpcUrl?: string;
   skills: Array<AgentSkillConfig | string>;
 }
 

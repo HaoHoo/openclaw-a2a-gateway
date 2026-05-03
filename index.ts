@@ -123,6 +123,7 @@ function parseAgentCard(raw: Record<string, unknown>): AgentCardConfig {
     name: asString(raw.name, "OpenClaw A2A Gateway"),
     description: asString(raw.description, "A2A bridge for OpenClaw agents"),
     url: asString(raw.url, ""),
+    grpcUrl: asString(raw.grpcUrl, ""),
     skills: skills.map((entry) => {
       if (typeof entry === "string") {
         return entry;
@@ -182,6 +183,7 @@ export function parseConfig(raw: unknown, resolvePath?: (nextPath: string) => st
   const discoveryRaw = config.discovery ? asObject(config.discovery) : undefined;
 
   const inboundAuth = asString(security.inboundAuth, "none") as InboundAuth;
+  const serverPort = asNumber(server.port, 18800);
 
   const defaultMimeTypes = [
     "image/*", "application/pdf", "text/plain", "text/csv",
@@ -198,7 +200,7 @@ export function parseConfig(raw: unknown, resolvePath?: (nextPath: string) => st
     agentCard: parseAgentCard(asObject(config.agentCard)),
     server: {
       host: asString(server.host, "0.0.0.0"),
-      port: asNumber(server.port, 18800),
+      port: serverPort,
     },
     storage: {
       tasksDir: resolveConfiguredPath(
