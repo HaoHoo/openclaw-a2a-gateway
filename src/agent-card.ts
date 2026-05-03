@@ -24,7 +24,7 @@ export function buildAgentCard(config: GatewayConfig): AgentCard {
   const agentCard = config.agentCard || ({} as GatewayConfig["agentCard"]);
   const server = config.server || { host: "0.0.0.0", port: 18800 };
   const configuredUrl = agentCard.url;
-  const configuredGrpcUrl = agentCard.grpcUrl;
+  const useDerivedGrpcUrl = agentCard.grpcUrl === true;
   const fallbackHost = server.host === "0.0.0.0" ? "localhost" : server.host;
   const fallbackUrl = `http://${fallbackHost}:${server.port}/a2a/jsonrpc`;
 
@@ -44,7 +44,9 @@ export function buildAgentCard(config: GatewayConfig): AgentCard {
   const grpcHost = server.host === "0.0.0.0"
     ? (configuredUrl ? new URL(configuredUrl).hostname : "localhost")
     : server.host;
-  const grpcUrl = configuredGrpcUrl || `${grpcHost}:${grpcPort}`;
+  const grpcUrl = useDerivedGrpcUrl
+    ? `${new URL(configuredUrl || fallbackUrl).origin}/grpc`
+    : `${grpcHost}:${grpcPort}`;
 
   return {
     protocolVersion: "0.3.0",

@@ -136,12 +136,12 @@ describe("a2a-gateway plugin", () => {
     assert.equal(interfaces[2]?.url, "127.0.0.1:18801");
   });
 
-  it("uses configured agentCard.grpcUrl when provided", () => {
+  it("derives published gRPC URL from the same base URL when agentCard.grpcUrl is true", () => {
     const config = parseConfig({
       agentCard: {
         name: "Test Agent",
         url: "http://127.0.0.1:18800/a2a/jsonrpc",
-        grpcUrl: "domain.com/grpc",
+        grpcUrl: true,
         skills: [{ name: "chat" }],
       },
       server: {
@@ -152,7 +152,7 @@ describe("a2a-gateway plugin", () => {
 
     const payload = buildAgentCard(config) as Record<string, unknown>;
     const interfaces = payload.additionalInterfaces as Array<Record<string, unknown>>;
-    assert.equal(interfaces[2]?.url, "domain.com/grpc");
+    assert.equal(interfaces[2]?.url, "http://127.0.0.1:18800/grpc");
   });
 
   it("dispatches inbound messages via gateway RPC", async () => {

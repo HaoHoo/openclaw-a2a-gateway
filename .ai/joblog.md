@@ -1,5 +1,167 @@
 # Job Log
 
+## 2026-05-03 12:01:03 +08:00
+
+### 修改主题
+
+调整 `agentCard.grpcUrl` 配置语义，改为**布尔开关**，并让 gRPC 发布地址与 JSON-RPC / REST 一样从基础 URL 推导。
+
+### 修改说明
+
+这次修改是在上一版 `grpcUrl` 实现基础上的收敛与简化：
+
+1. **配置语义变化**
+   - 原先：`agentCard.grpcUrl` 被当作字符串使用，需要手写完整 GRPC 地址
+   - 现在：`agentCard.grpcUrl` 改为布尔值
+
+2. **生成逻辑变化**
+   - 当 `agentCard.grpcUrl` 未配置或为 `false` 时：
+     - 继续沿用默认逻辑，发布 `<host>:<port+1>`
+   - 当 `agentCard.grpcUrl` 为 `true` 时：
+     - 直接复用现有 JSON-RPC / REST 使用的基础 URL
+     - 从 `new URL(configuredUrl || fallbackUrl).origin` 推导
+     - 最终生成 `${origin}/grpc`
+
+3. **设计目标**
+   - 不新增运行时监听配置
+   - 不让用户手动写完整字符串 URL
+   - 尽量复用现有 URL 生成逻辑，减少分支和额外变量
+
+### 影响文件
+
+- `src/agent-card.ts`
+- `src/types.ts`
+- `index.ts`
+- `openclaw.plugin.json`
+- `tests/a2a-gateway.test.ts`
+- `README.md`
+- `.github/copilot-instructions.md`
+
+### 配置示例
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "a2a-gateway": {
+        "config": {
+          "agentCard": {
+            "url": "http://127.0.0.1:18800/a2a/jsonrpc",
+            "grpcUrl": true
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### 修改代码对照
+
+#### 1. 类型定义：`src/types.ts`
+
+**修改前**
+
+```ts
+export interface AgentCardConfig {
+  name: string;
+  description?: string;
+  url?: string;
+  grpcUrl?: string;
+  skills: Array<AgentSkillConfig | string>;
+}
+```
+
+**修改后**
+
+```ts
+export interface AgentCardConfig {
+  name: string;
+  description?: string;
+  url?: string;
+  grpcUrl?: boolean;
+  skills: Array<AgentSkillConfig | string>;
+}
+```
+
+#### 2. 配置解析：`index.ts`
+
+**修改前**
+
+```ts
+grpcUrl: asString(raw.grpcUrl, ""),
+```
+
+**修改后**
+
+```ts
+grpcUrl: asBoolean(raw.grpcUrl, false),
+```
+
+#### 3. Agent Card gRPC 地址生成：`src/agent-card.ts`
+
+**修改前**
+
+```ts
+const configuredGrpcUrl = agentCard.grpcUrl;
+const grpcUrl = configuredGrpcUrl || `${grpcHost}:${grpcPort}`;
+```
+
+**修改后**
+
+```ts
+const useDerivedGrpcUrl = agentCard.grpcUrl === true;
+const grpcUrl = useDerivedGrpcUrl
+  ? `${new URL(configuredUrl || fallbackUrl).origin}/grpc`
+  : `${grpcHost}:${grpcPort}`;
+```
+
+#### 4. 配置 Schema：`openclaw.plugin.json`
+
+**修改前**
+
+```json
+"grpcUrl": {
+  "type": "string",
+  "description": "Override the gRPC interface URL published in the Agent Card..."
+}
+```
+
+**修改后**
+
+```json
+"grpcUrl": {
+  "type": "boolean",
+  "description": "When true, publish the Agent Card gRPC URL from the same base URL used by JSON-RPC/REST, with /grpc appended. Does not change the local gRPC listener port."
+}
+```
+
+#### 5. 测试：`tests/a2a-gateway.test.ts`
+
+**修改前**
+
+```ts
+it("uses configured agentCard.grpcUrl when provided", () => {
+  grpcUrl: "domain.com/grpc",
+  assert.equal(interfaces[2]?.url, "domain.com/grpc");
+});
+```
+
+**修改后**
+
+```ts
+it("derives published gRPC URL from the same base URL when agentCard.grpcUrl is true", () => {
+  grpcUrl: true,
+  assert.equal(interfaces[2]?.url, "http://127.0.0.1:18800/grpc");
+});
+```
+
+### 结果说明
+
+- `agentCard.grpcUrl` 现在是布尔开关，而不是手写字符串
+- 当值为 `true` 时，Agent Card 中的 gRPC 地址与 JSON-RPC / REST 一样从基础 URL 派生
+- 运行时 gRPC 监听端口逻辑没有变化，仍为 `server.port + 1`
+
 ## 2026-05-03 10:53:40 +08:00
 
 ### 修改主题

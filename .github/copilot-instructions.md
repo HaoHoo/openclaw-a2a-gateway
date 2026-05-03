@@ -17,7 +17,7 @@ Run `npm install` in the repository root before local development work; the root
 
 ## High-level architecture
 
-- `index.ts` is both the OpenClaw plugin entrypoint and the runtime composition root. It parses plugin config, creates all managers/stores, registers gateway RPC methods (`a2a.send`, `a2a.metrics`, `a2a.audit`, push notification helpers), exposes the `a2a_send_file` tool, mounts Express A2A endpoints, and starts a gRPC server on `server.port + 1`. `agentCard.grpcUrl` can override only the gRPC URL published in the Agent Card.
+- `index.ts` is both the OpenClaw plugin entrypoint and the runtime composition root. It parses plugin config, creates all managers/stores, registers gateway RPC methods (`a2a.send`, `a2a.metrics`, `a2a.audit`, push notification helpers), exposes the `a2a_send_file` tool, mounts Express A2A endpoints, and starts a gRPC server on `server.port + 1`. When `agentCard.grpcUrl` is `true`, the Agent Card derives gRPC from the same base URL as JSON-RPC/REST and appends `/grpc`; it does not change the listener port.
 - Inbound A2A traffic flows through `DefaultRequestHandler` from `@a2a-js/sdk`, backed by `FileTaskStore` for durable task persistence and `QueueingAgentExecutor` for concurrency limits, queue rejection, and optional Michaelis-Menten soft backpressure.
 - `OpenClawAgentExecutor` is the bridge from A2A tasks into OpenClaw gateway RPC. It flattens inbound `TextPart`/`FilePart`/`DataPart` content into agent-readable text, streams progress, and promotes outbound `mediaUrl`/`mediaUrls` back into A2A `FilePart`s.
 - Outbound peer calls from `a2a.send` and `a2a_send_file` go through `src/client.ts`. That client resolves Agent Cards, applies peer auth, tries transports in JSON-RPC -> REST -> gRPC order, and can adapt the ordering based on recent per-peer transport success/latency.
@@ -36,3 +36,4 @@ Run `npm install` in the repository root before local development work; the root
 - Durable tasks are filesystem-backed JSON files under `storage.tasksDir`. Startup recovery and periodic TTL cleanup are part of the normal lifecycle, so task-related changes usually need to consider `task-store.ts`, `task-recovery.ts`, and `task-cleanup.ts` together.
 - Tests use Node's built-in `node:test` runner with `assert/strict`, not Jest/Vitest. Shared plugin harnesses and mock OpenClaw/WebSocket helpers live in `tests/helpers.ts`.
 - The plugin intentionally treats gRPC as non-fatal: HTTP/JSON-RPC/REST startup should still succeed if the gRPC listener on `port + 1` cannot bind.
+- When updating `.ai/joblog.md`, prepend the new entry at the top of the file instead of appending it at the end.

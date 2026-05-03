@@ -123,7 +123,7 @@ function parseAgentCard(raw: Record<string, unknown>): AgentCardConfig {
     name: asString(raw.name, "OpenClaw A2A Gateway"),
     description: asString(raw.description, "A2A bridge for OpenClaw agents"),
     url: asString(raw.url, ""),
-    grpcUrl: asString(raw.grpcUrl, ""),
+    grpcUrl: asBoolean(raw.grpcUrl, false),
     skills: skills.map((entry) => {
       if (typeof entry === "string") {
         return entry;
