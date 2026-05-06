@@ -16,15 +16,12 @@
     "properties": {
       "agentCard": {
         "type": "object",
-        "additionalProperties": false,
+        "additionalProperties": true,
         "properties": {
           "name": { "type": "string" },
           "description": { "type": "string" },
           "url": { "type": "string" },
-          "grpcUrl": {
-            "type": "boolean",
-            "description": "When true, publish the Agent Card gRPC URL from the same base URL used by JSON-RPC/REST, with /grpc appended. Does not change the local gRPC listener port."
-          },
+          "grpcProxy": { "type": "boolean" },
           "skills": {
             "type": "array",
             "items": {

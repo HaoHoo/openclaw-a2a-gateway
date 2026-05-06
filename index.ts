@@ -118,12 +118,13 @@ function resolveConfiguredPath(
 
 function parseAgentCard(raw: Record<string, unknown>): AgentCardConfig {
   const skills = Array.isArray(raw.skills) ? raw.skills : [];
+  const grpcProxy = typeof raw.grpcProxy === "boolean" ? raw.grpcProxy : undefined;
 
   return {
     name: asString(raw.name, "OpenClaw A2A Gateway"),
     description: asString(raw.description, "A2A bridge for OpenClaw agents"),
     url: asString(raw.url, ""),
-    grpcUrl: asBoolean(raw.grpcUrl, false),
+    ...(grpcProxy !== undefined ? { grpcProxy } : {}),
     skills: skills.map((entry) => {
       if (typeof entry === "string") {
         return entry;
@@ -183,7 +184,6 @@ export function parseConfig(raw: unknown, resolvePath?: (nextPath: string) => st
   const discoveryRaw = config.discovery ? asObject(config.discovery) : undefined;
 
   const inboundAuth = asString(security.inboundAuth, "none") as InboundAuth;
-  const serverPort = asNumber(server.port, 18800);
 
   const defaultMimeTypes = [
     "image/*", "application/pdf", "text/plain", "text/csv",
@@ -200,7 +200,7 @@ export function parseConfig(raw: unknown, resolvePath?: (nextPath: string) => st
     agentCard: parseAgentCard(asObject(config.agentCard)),
     server: {
       host: asString(server.host, "0.0.0.0"),
-      port: serverPort,
+      port: asNumber(server.port, 18800),
     },
     storage: {
       tasksDir: resolveConfiguredPath(
@@ -332,9 +332,8 @@ const plugin = {
     const pushStore = new PushNotificationStore();
     const client = new A2AClient();
     const taskStore = new FileTaskStore(config.storage.tasksDir);
-    const agentExecutor = new OpenClawAgentExecutor(api, config);
     const executor = new QueueingAgentExecutor(
-      agentExecutor,
+      new OpenClawAgentExecutor(api, config),
       telemetry,
       config.limits,
       config.routing.defaultAgentId,
@@ -984,7 +983,6 @@ const plugin = {
         healthManager?.stop();
         auditLogger.close();
         client.destroy();
-        agentExecutor.close();
 
         // Stop task cleanup timer
         if (cleanupTimer) {
