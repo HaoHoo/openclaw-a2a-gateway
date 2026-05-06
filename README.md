@@ -365,7 +365,7 @@ If both servers are on the same local network, use their LAN IPs directly. Make 
 
 ### Option C: Public IP
 
-Use public IPs with bearer token authentication. Consider adding firewall rules to restrict access to known IPs.
+Use public IPs with bearer token authentication. Consider adding firewall rules to restrict access to known IPs. If you use a reverse proxy, please refer to [NETWORK.md](./docs/NETWORK.md).
 
 ## Full Example: Two-Server Setup
 
