@@ -440,7 +440,7 @@ node <PLUGIN_PATH>/skill/scripts/a2a-send.mjs \
 | `agentCard.name` | string | `OpenClaw A2A Gateway` | Display name for this agent |
 | `agentCard.description` | string | `A2A bridge for OpenClaw agents` | Human-readable description |
 | `agentCard.url` | string | auto | JSON-RPC endpoint URL |
-| `agentCard.grpcUrl` | boolean | `false` | When `true`, publish the gRPC URL from the same base URL as JSON-RPC/REST with `/grpc` appended, without changing the local listener |
+| `agentCard.grpcProxy` | boolean | `false` | When `true`, publish the gRPC URL from the same base URL as JSON-RPC/REST to support reverse proxy, without changing the local listener |
 | `agentCard.skills` | array | `[{chat}]` | List of skills this agent offers |
 | `server.host` | string | `0.0.0.0` | Bind address |
 | `server.port` | number | `18800` | A2A HTTP port (gRPC still listens on port+1) |
@@ -529,7 +529,7 @@ node <PLUGIN_PATH>/skill/scripts/a2a-send.mjs \
 | `/.well-known/agent-card.json` | GET | Agent Card discovery *(alias: `/.well-known/agent.json`)* |
 | `/a2a/jsonrpc` | POST | A2A JSON-RPC transport |
 | `/a2a/rest` | POST | A2A REST transport |
-| `<host>:<port+1>` | gRPC | A2A gRPC transport *(or `${origin}/grpc` in the Agent Card when `agentCard.grpcUrl=true`)* |
+| `<host>:<port+1>` | gRPC | A2A gRPC transport *(or `${origin}` in the Agent Card when `agentCard.grpcUrl=true`)* |
 | `/a2a/metrics` | GET | Telemetry snapshot (optional bearer auth) |
 | `/a2a/push/register` | POST | Register push notification webhook |
 | `/a2a/push/:taskId` | DELETE | Unregister push notification |
