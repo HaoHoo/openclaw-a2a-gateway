@@ -2,8 +2,6 @@ node_modules/
 dist/
 coverage/
 .DS_Store
-.ai/
-.github/
 *.log
 data/
 plan-*.md
